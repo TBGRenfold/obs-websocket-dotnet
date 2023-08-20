@@ -1,327 +1,532 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using OBSWebsocketDotNet.Communication;
 using OBSWebsocketDotNet.Types;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using OBSWebsocketDotNet.Types.Events;
 
 namespace OBSWebsocketDotNet
 {
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.SceneChanged"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="newSceneName">Name of the new current scene</param>
-    public delegate void SceneChangeCallback(OBSWebsocket sender, string newSceneName);
+    public partial class OBSWebsocket
+    {
+        #region Events
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.SourceOrderChanged"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sceneName">Name of the scene where items where reordered</param>
-    public delegate void SourceOrderChangeCallback(OBSWebsocket sender, string sceneName);
+        /// <summary>
+        /// The current program scene has changed.
+        /// </summary>
+        public event EventHandler<ProgramSceneChangedEventArgs> CurrentProgramSceneChanged;
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.SceneItemAdded"/>
-    /// or <see cref="OBSWebsocket.SceneItemRemoved"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sceneName">Name of the scene where the item is</param>
-    /// <param name="itemName">Name of the concerned item</param>
-    public delegate void SceneItemUpdateCallback(OBSWebsocket sender, string sceneName, string itemName);
+        /// <summary>
+        /// The list of scenes has changed.
+        /// TODO: Make OBS fire this event when scenes are reordered.
+        /// </summary>
+        public event EventHandler<SceneListChangedEventArgs> SceneListChanged;
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.SceneItemVisibilityChanged"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sceneName">Name of the scene where the item is</param>
-    /// <param name="itemName">Name of the concerned item</param>
-    /// <param name="isVisible">Visibility of the item</param>
-    public delegate void SceneItemVisibilityChangedCallback(OBSWebsocket sender, string sceneName, string itemName, bool isVisible);
+        /// <summary>
+        /// Triggered when the scene item list of the specified scene is reordered
+        /// </summary>
+        public event EventHandler<SceneItemListReindexedEventArgs> SceneItemListReindexed;
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.SceneItemLockChanged"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sceneName">Name of the scene where the item is</param>
-    /// <param name="itemName">Name of the concerned item</param>
-    /// <param name="itemId">Id of the concerned item</param>
-    /// <param name="isLocked">Lock status of the item</param>
-    public delegate void SceneItemLockChangedCallback(OBSWebsocket sender, string sceneName, string itemName, int itemId, bool isLocked);
+        /// <summary>
+        /// Triggered when a new item is added to the item list of the specified scene
+        /// </summary>
+        public event EventHandler<SceneItemCreatedEventArgs> SceneItemCreated;
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.TransitionChanged"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="newTransitionName">Name of the new selected transition</param>
-    public delegate void TransitionChangeCallback(OBSWebsocket sender, string newTransitionName);
+        /// <summary>
+        /// Triggered when an item is removed from the item list of the specified scene
+        /// </summary>
+        public event EventHandler<SceneItemRemovedEventArgs> SceneItemRemoved;
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.TransitionDurationChanged"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="newDuration">Name of the new transition duration (in milliseconds)</param>
-    public delegate void TransitionDurationChangeCallback(OBSWebsocket sender, int newDuration);
+        /// <summary>
+        /// Triggered when the visibility of a scene item changes
+        /// </summary>
+        public event EventHandler<SceneItemEnableStateChangedEventArgs> SceneItemEnableStateChanged;
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.TransitionBegin"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="transitionName">Transition name</param>
-    /// <param name="transitionType">Transition type</param>
-    /// <param name="duration">Transition duration (in milliseconds). Will be -1 for any transition with a fixed duration, such as a Stinger, due to limitations of the OBS API</param>
-    /// <param name="fromScene">Source scene of the transition</param>
-    /// <param name="toScene">Destination scene of the transition</param>
-    public delegate void TransitionBeginCallback(OBSWebsocket sender, string transitionName, string transitionType, int duration, string fromScene, string toScene);
+        /// <summary>
+        /// Triggered when the lock status of a scene item changes
+        /// </summary>
+        public event EventHandler<SceneItemLockStateChangedEventArgs> SceneItemLockStateChanged;
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.TransitionEnd"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="transitionName">Transition name</param>
-    /// <param name="transitionType">Transition type</param>
-    /// <param name="duration">Transition duration (in milliseconds).</param>
-    /// <param name="toScene">Destination scene of the transition</param>
-    public delegate void TransitionEndCallback(OBSWebsocket sender, string transitionName, string transitionType, int duration, string toScene);
+        /// <summary>
+        /// Triggered when switching to another scene collection
+        /// </summary>
+        public event EventHandler<CurrentSceneCollectionChangedEventArgs> CurrentSceneCollectionChanged;
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.TransitionVideoEnd"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="transitionName">Transition name</param>
-    /// <param name="transitionType">Transition type</param>
-    /// <param name="duration">Transition duration (in milliseconds).</param>
-    /// <param name="fromScene">Source scene of the transition</param>
-    /// <param name="toScene">Destination scene of the transition</param>
-    public delegate void TransitionVideoEndCallback(OBSWebsocket sender, string transitionName, string transitionType, int duration, string fromScene, string toScene);
+        /// <summary>
+        /// Triggered when a scene collection is created, deleted or renamed
+        /// </summary>
+        public event EventHandler<SceneCollectionListChangedEventArgs> SceneCollectionListChanged;
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.StreamingStateChanged"/>, <see cref="OBSWebsocket.RecordingStateChanged"/>
-    /// or <see cref="OBSWebsocket.ReplayBufferStateChanged"/> 
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="type">New output state</param>
-    public delegate void OutputStateCallback(OBSWebsocket sender, OutputState type);
+        /// <summary>
+        /// Triggered when switching to another transition
+        /// </summary>
+        public event EventHandler<CurrentSceneTransitionChangedEventArgs> CurrentSceneTransitionChanged;
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.StreamStatus"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="status">Stream status data</param>
-    public delegate void StreamStatusCallback(OBSWebsocket sender, StreamStatus status);
+        /// <summary>
+        /// Triggered when the current transition duration is changed
+        /// </summary>
+        public event EventHandler<CurrentSceneTransitionDurationChangedEventArgs> CurrentSceneTransitionDurationChanged;
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.StudioModeSwitched"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="enabled">New Studio Mode status</param>
-    public delegate void StudioModeChangeCallback(OBSWebsocket sender, bool enabled);
+        /// <summary>
+        /// Triggered when a transition between two scenes starts. Followed by <see cref="CurrentProgramSceneChanged"/>
+        /// </summary>
+        public event EventHandler<SceneTransitionStartedEventArgs> SceneTransitionStarted;
 
-    /// <summary>
-    /// Called by <see cref="OBSWebsocket.Heartbeat"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="heatbeat">heartbeat data</param>
-    public delegate void HeartBeatCallback(OBSWebsocket sender, Heartbeat heatbeat);
+        /// <summary>
+        /// Triggered when a transition (other than "cut") has ended. Please note that the from-scene field is not available in TransitionEnd
+        /// </summary>
+        public event EventHandler<SceneTransitionEndedEventArgs> SceneTransitionEnded;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SceneItemDeselected"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sceneName">Name of the scene item was in</param>
-    /// <param name="itemName">Name of the item deselected</param>
-    /// <param name="itemId">Id of the item deselected</param>
-    public delegate void SceneItemDeselectedCallback(OBSWebsocket sender, string sceneName, string itemName, string itemId);
+        /// <summary>
+        /// Triggered when a stinger transition has finished playing its video
+        /// </summary>
+        public event EventHandler<SceneTransitionVideoEndedEventArgs> SceneTransitionVideoEnded;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SceneItemSelected"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sceneName">Name of the scene item was in</param>
-    /// <param name="itemName">Name of the item seletected</param>
-    /// <param name="itemId">Id of the item selected</param>
-    public delegate void SceneItemSelectedCallback(OBSWebsocket sender, string sceneName, string itemName, string itemId);
+        /// <summary>
+        /// Triggered when switching to another profile
+        /// </summary>
+        public event EventHandler<CurrentProfileChangedEventArgs> CurrentProfileChanged;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SceneItemTransformChanged"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="transform">Transform data</param>
-    public delegate void SceneItemTransformCallback(OBSWebsocket sender, SceneItemTransformInfo transform);
+        /// <summary>
+        /// Triggered when a profile is created, imported, removed or renamed
+        /// </summary>
+        public event EventHandler<ProfileListChangedEventArgs> ProfileListChanged;
 
+        /// <summary>
+        /// Triggered when the streaming output state changes
+        /// </summary>
+        public event EventHandler<StreamStateChangedEventArgs> StreamStateChanged;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceAudioMixersChanged"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="mixerInfo">Mixer information that was updated</param>
-    public delegate void SourceAudioMixersChangedCallback(OBSWebsocket sender, AudioMixersChangedInfo mixerInfo);
+        /// <summary>
+        /// Triggered when the recording output state changes
+        /// </summary>
+        public event EventHandler<RecordStateChangedEventArgs> RecordStateChanged;
 
+        /// <summary>
+        /// Triggered when state of the replay buffer changes
+        /// </summary>
+        public event EventHandler<ReplayBufferStateChangedEventArgs> ReplayBufferStateChanged;
 
+        /// <summary>
+        /// Triggered when the preview scene selection changes (Studio Mode only)
+        /// </summary>
+        public event EventHandler<CurrentPreviewSceneChangedEventArgs> CurrentPreviewSceneChanged;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceAudioSyncOffsetChanged"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of the source for the offset change</param>
-    /// <param name="syncOffset">Sync offset value</param>
-    public delegate void SourceAudioSyncOffsetCallback(OBSWebsocket sender, string sourceName, int syncOffset);
+        /// <summary>
+        /// Triggered when Studio Mode is turned on or off
+        /// </summary>
+        public event EventHandler<StudioModeStateChangedEventArgs> StudioModeStateChanged;
 
+        /// <summary>
+        /// Triggered when OBS exits
+        /// </summary>
+        public event EventHandler ExitStarted;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceCreated"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="settings">Newly created source settings</param>
-    public delegate void SourceCreatedCallback(OBSWebsocket sender, SourceSettings settings);
+        /// <summary>
+        /// Triggered when connected successfully to an obs-websocket server
+        /// </summary>
+        public event EventHandler Connected;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceDestroyed"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Newly destroyed source information</param>
-    /// <param name="sourceKind">Kind of source destroyed</param>
-    /// <param name="sourceType">Type of source destroyed</param>
-    public delegate void SourceDestroyedCallback(OBSWebsocket sender, string sourceName, string sourceType, string sourceKind);
+        /// <summary>
+        /// Triggered when disconnected from an obs-websocket server
+        /// </summary>
+        public event EventHandler<ObsDisconnectionInfo> Disconnected;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceRenamed"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="newName">New name of source</param>
-    /// <param name="previousName">Previous name of source</param>
-    public delegate void SourceRenamedCallback(OBSWebsocket sender, string newName, string previousName);
+        /// <summary>
+        /// A scene item is selected in the UI
+        /// </summary>
+        public event EventHandler<SceneItemSelectedEventArgs> SceneItemSelected;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceMuteStateChanged"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="muted">Current mute state of source</param>
-    public delegate void SourceMuteStateChangedCallback(OBSWebsocket sender, string sourceName, bool muted);
+        /// <summary>
+        /// A scene item transform has changed
+        /// </summary>
+        public event EventHandler<SceneItemTransformEventArgs> SceneItemTransformChanged;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceAudioDeactivated"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    public delegate void SourceAudioDeactivatedCallback(OBSWebsocket sender, string sourceName);
+        /// <summary>
+        /// The audio sync offset of an input has changed
+        /// </summary>
+        public event EventHandler<InputAudioSyncOffsetChangedEventArgs> InputAudioSyncOffsetChanged;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceAudioActivated"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    public delegate void SourceAudioActivatedCallback(OBSWebsocket sender, string sourceName);
+        /// <summary>
+        /// A filter was added to a source
+        /// </summary>
+        public event EventHandler<SourceFilterCreatedEventArgs> SourceFilterCreated;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceVolumeChanged"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="volume">Current volume levels of source</param>
-    public delegate void SourceVolumeChangedCallback(OBSWebsocket sender, SourceVolume volume);
+        /// <summary>
+        /// A filter was removed from a source
+        /// </summary>
+        public event EventHandler<SourceFilterRemovedEventArgs> SourceFilterRemoved;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceFilterRemoved"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="filterName">Name of removed filter</param>
-    public delegate void SourceFilterRemovedCallback(OBSWebsocket sender, string sourceName, string filterName);
+        /// <summary>
+        /// Filters in a source have been reordered
+        /// </summary>
+        public event EventHandler<SourceFilterListReindexedEventArgs> SourceFilterListReindexed;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceFilterAdded"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="filterName">Name of filter</param>
-    /// <param name="filterType">Type of filter</param>
-    /// <param name="filterSettings">Settings for filter</param>
-    public delegate void SourceFilterAddedCallback(OBSWebsocket sender, string sourceName, string filterName, string filterType, JObject filterSettings);
+        /// <summary>
+        /// Triggered when the visibility of a filter has changed
+        /// </summary>
+        public event EventHandler<SourceFilterEnableStateChangedEventArgs> SourceFilterEnableStateChanged;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceFiltersReordered"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="filters">Current order of filters for source</param>
-    public delegate void SourceFiltersReorderedCallback(OBSWebsocket sender, string sourceName, List<FilterReorderItem> filters);
+        /// <summary>
+        /// A source has been muted or unmuted
+        /// </summary>
+        public event EventHandler<InputMuteStateChangedEventArgs> InputMuteStateChanged;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.SourceFilterVisibilityChanged"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="filterName">Name of filter</param>
-    /// <param name="filterEnabled">New filter state</param>
-    public delegate void SourceFilterVisibilityChangedCallback(OBSWebsocket sender, string sourceName, string filterName, bool filterEnabled);
+        /// <summary>
+        /// The volume of a source has changed
+        /// </summary>
+        public event EventHandler<InputVolumeChangedEventArgs> InputVolumeChanged;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.BroadcastCustomMessageReceived"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="realm">Identifier provided by the sender</param>
-    /// <param name="data">User-defined data</param>
-    public delegate void BroadcastCustomMessageCallback(OBSWebsocket sender, string realm, JObject data);
+        /// <summary>
+        /// A custom broadcast message was received
+        /// </summary>
+        public event EventHandler<VendorEventArgs> VendorEvent;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.MediaEnded"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="sourceKind">Kind of source</param>
-    public delegate void MediaEndedCallback(OBSWebsocket sender, string sourceName, string sourceKind);
+        /// <summary>
+        /// These events are emitted by the OBS sources themselves. For example when the media file ends. The behavior depends on the type of media source being used.
+        /// </summary>
+        public event EventHandler<MediaInputPlaybackEndedEventArgs> MediaInputPlaybackEnded;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.MediaStarted"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="sourceKind">Kind of source</param>
-    public delegate void MediaStartedCallback(OBSWebsocket sender, string sourceName, string sourceKind);
+        /// <summary>
+        /// These events are emitted by the OBS sources themselves. For example when the media file starts playing. The behavior depends on the type of media source being used.
+        /// </summary>
+        public event EventHandler<MediaInputPlaybackStartedEventArgs> MediaInputPlaybackStarted;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.MediaPrevious"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="sourceKind">Kind of source</param>
-    public delegate void MediaPreviousCallback(OBSWebsocket sender, string sourceName, string sourceKind);
+        /// <summary>
+        /// This event is only emitted when something actively controls the media/VLC source. In other words, the source will never emit this on its own naturally.
+        /// </summary>
+        public event EventHandler<MediaInputActionTriggeredEventArgs> MediaInputActionTriggered;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.MediaNext"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="sourceKind">Kind of source</param>
-    public delegate void MediaNextCallback(OBSWebsocket sender, string sourceName, string sourceKind);
+        /// <summary>
+        /// The virtual cam state has changed.
+        /// </summary>
+        public event EventHandler<VirtualcamStateChangedEventArgs> VirtualcamStateChanged;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.MediaStopped"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="sourceKind">Kind of source</param>
-    public delegate void MediaStoppedCallback(OBSWebsocket sender, string sourceName, string sourceKind);
+        /// <summary>
+        /// The current scene collection has begun changing.
+        /// </summary>
+        public event EventHandler<CurrentSceneCollectionChangingEventArgs> CurrentSceneCollectionChanging;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.MediaRestarted"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="sourceKind">Kind of source</param>
-    public delegate void MediaRestartedCallback(OBSWebsocket sender, string sourceName, string sourceKind);
+        /// <summary>
+        /// The current profile has begun changing.
+        /// </summary>
+        public event EventHandler<CurrentProfileChangingEventArgs> CurrentProfileChanging;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.MediaPaused"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="sourceKind">Kind of source</param>
-    public delegate void MediaPausedCallback(OBSWebsocket sender, string sourceName, string sourceKind);
+        /// <summary>
+        /// The name of a source filter has changed.
+        /// </summary>
+        public event EventHandler<SourceFilterNameChangedEventArgs> SourceFilterNameChanged;
 
-    /// <summary>
-    /// Callback by <see cref="OBSWebsocket.MediaPlaying"/>
-    /// </summary>
-    /// <param name="sender"><see cref="OBSWebsocket"/> instance</param>
-    /// <param name="sourceName">Name of source</param>
-    /// <param name="sourceKind">Kind of source</param>
-    public delegate void MediaPlayingCallback(OBSWebsocket sender, string sourceName, string sourceKind);
+        /// <summary>
+        /// An input has been created.
+        /// </summary>
+        public event EventHandler<InputCreatedEventArgs> InputCreated;
+
+        /// <summary>
+        /// An input has been removed.
+        /// </summary>
+        public event EventHandler<InputRemovedEventArgs> InputRemoved;
+
+        /// <summary>
+        /// The name of an input has changed.
+        /// </summary>
+        public event EventHandler<InputNameChangedEventArgs> InputNameChanged;
+
+        /// <summary>
+        /// An input's active state has changed.
+        /// When an input is active, it means it's being shown by the program feed.
+        /// </summary>
+        public event EventHandler<InputActiveStateChangedEventArgs> InputActiveStateChanged;
+
+        /// <summary>
+        /// An input's show state has changed.
+        /// When an input is showing, it means it's being shown by the preview or a dialog.
+        /// </summary>
+        public event EventHandler<InputShowStateChangedEventArgs> InputShowStateChanged;
+
+        /// <summary>
+        /// The audio balance value of an input has changed.
+        /// </summary>
+        public event EventHandler<InputAudioBalanceChangedEventArgs> InputAudioBalanceChanged;
+
+        /// <summary>
+        /// The audio tracks of an input have changed.
+        /// </summary>
+        public event EventHandler<InputAudioTracksChangedEventArgs> InputAudioTracksChanged;
+
+        /// <summary>
+        /// The monitor type of an input has changed.
+        /// Available types are:
+        /// - `OBS_MONITORING_TYPE_NONE`
+        /// - `OBS_MONITORING_TYPE_MONITOR_ONLY`
+        /// - `OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT`
+        /// </summary>
+        public event EventHandler<InputAudioMonitorTypeChangedEventArgs> InputAudioMonitorTypeChanged;
+
+        /// <summary>
+        /// A high-volume event providing volume levels of all active inputs every 50 milliseconds.
+        /// </summary>
+        public event EventHandler<InputVolumeMetersEventArgs> InputVolumeMeters;
+
+        /// <summary>
+        /// The replay buffer has been saved.
+        /// </summary>
+        public event EventHandler<ReplayBufferSavedEventArgs> ReplayBufferSaved;
+
+        /// <summary>
+        /// A new scene has been created.
+        /// </summary>
+        public event EventHandler<SceneCreatedEventArgs> SceneCreated;
+
+        /// <summary>
+        /// A scene has been removed.
+        /// </summary>
+        public event EventHandler<SceneRemovedEventArgs> SceneRemoved;
+
+        /// <summary>
+        /// The name of a scene has changed.
+        /// </summary>
+        public event EventHandler<SceneNameChangedEventArgs> SceneNameChanged;
+
+        #endregion
+
+        #region EventProcessing
+
+        /// <summary>
+        /// Update message handler
+        /// </summary>
+        /// <param name="eventType">Value of "event-type" in the JSON body</param>
+        /// <param name="body">full JSON message body</param>
+        protected void ProcessEventType(string eventType, JObject body)
+        {
+            body = (JObject)body["eventData"];
+
+            switch (eventType)
+            {
+                case nameof(CurrentProgramSceneChanged):
+                    CurrentProgramSceneChanged?.Invoke(this, new ProgramSceneChangedEventArgs((string)body["sceneName"]));
+                    break;
+
+                case nameof(SceneListChanged):
+                    SceneListChanged?.Invoke(this, new SceneListChangedEventArgs(JsonConvert.DeserializeObject<List<JObject>>((string)body["scenes"])));
+                    break;
+
+                case nameof(SceneItemListReindexed):
+                    SceneItemListReindexed?.Invoke(this, new SceneItemListReindexedEventArgs((string)body["sceneName"], JsonConvert.DeserializeObject<List<JObject>>((string)body["sceneItems"])));
+                    break;
+
+                case nameof(SceneItemCreated):
+                    SceneItemCreated?.Invoke(this, new SceneItemCreatedEventArgs((string)body["sceneName"], (string)body["sourceName"], (int)body["sceneItemId"], (int)body["sceneItemIndex"]));
+                    break;
+
+                case nameof(SceneItemRemoved):
+                    SceneItemRemoved?.Invoke(this, new SceneItemRemovedEventArgs((string)body["sceneName"], (string)body["sourceName"], (int)body["sceneItemId"]));
+                    break;
+
+                case nameof(SceneItemEnableStateChanged):
+                    SceneItemEnableStateChanged?.Invoke(this, new SceneItemEnableStateChangedEventArgs((string)body["sceneName"], (int)body["sceneItemId"], (bool)body["sceneItemEnabled"]));
+                    break;
+
+                case nameof(SceneItemLockStateChanged):
+                    SceneItemLockStateChanged?.Invoke(this, new SceneItemLockStateChangedEventArgs((string)body["sceneName"], (int)body["sceneItemId"], (bool)body["sceneItemLocked"]));
+                    break;
+
+                case nameof(CurrentSceneCollectionChanged):
+                    CurrentSceneCollectionChanged?.Invoke(this, new CurrentSceneCollectionChangedEventArgs((string)body["sceneCollectionName"]));
+                    break;
+
+                case nameof(SceneCollectionListChanged):
+                    SceneCollectionListChanged?.Invoke(this, new SceneCollectionListChangedEventArgs(JsonConvert.DeserializeObject<List<string>>((string)body["sceneCollections"])));
+                    break;
+
+                case nameof(CurrentSceneTransitionChanged):
+                    CurrentSceneTransitionChanged?.Invoke(this, new CurrentSceneTransitionChangedEventArgs((string)body["transitionName"]));
+                    break;
+
+                case nameof(CurrentSceneTransitionDurationChanged):
+                    CurrentSceneTransitionDurationChanged?.Invoke(this, new CurrentSceneTransitionDurationChangedEventArgs((int)body["transitionDuration"]));
+                    break;
+
+                case nameof(SceneTransitionStarted):
+                    SceneTransitionStarted?.Invoke(this, new SceneTransitionStartedEventArgs((string)body["transitionName"]));
+                    break;
+
+                case nameof(SceneTransitionEnded):
+                    SceneTransitionEnded?.Invoke(this, new SceneTransitionEndedEventArgs((string)body["transitionName"]));
+                    break;
+
+                case nameof(SceneTransitionVideoEnded):
+                    SceneTransitionVideoEnded?.Invoke(this, new SceneTransitionVideoEndedEventArgs((string)body["transitionName"]));
+                    break;
+
+                case nameof(CurrentProfileChanged):
+                    CurrentProfileChanged?.Invoke(this, new CurrentProfileChangedEventArgs((string)body["profileName"]));
+                    break;
+
+                case nameof(ProfileListChanged):
+                    ProfileListChanged?.Invoke(this, new ProfileListChangedEventArgs(JsonConvert.DeserializeObject<List<string>>((string)body["profiles"])));
+                    break;
+
+                case nameof(StreamStateChanged):
+                    StreamStateChanged?.Invoke(this, new StreamStateChangedEventArgs(new OutputStateChanged(body)));
+                    break;
+
+                case nameof(RecordStateChanged):
+                    RecordStateChanged?.Invoke(this, new RecordStateChangedEventArgs(new RecordStateChanged(body)));
+                    break;
+
+                case nameof(CurrentPreviewSceneChanged):
+                    CurrentPreviewSceneChanged?.Invoke(this, new CurrentPreviewSceneChangedEventArgs((string)body["sceneName"]));
+                    break;
+
+                case nameof(StudioModeStateChanged):
+                    StudioModeStateChanged?.Invoke(this, new StudioModeStateChangedEventArgs((bool)body["studioModeEnabled"]));
+                    break;
+
+                case nameof(ReplayBufferStateChanged):
+                    ReplayBufferStateChanged?.Invoke(this, new ReplayBufferStateChangedEventArgs(new OutputStateChanged(body)));
+                    break;
+
+                case nameof(ExitStarted):
+                    ExitStarted?.Invoke(this, EventArgs.Empty);
+                    break;
+
+                case nameof(SceneItemSelected):
+                    SceneItemSelected?.Invoke(this, new SceneItemSelectedEventArgs((string)body["sceneName"], (string)body["sceneItemId"]));
+                    break;
+
+                case nameof(SceneItemTransformChanged):
+                    SceneItemTransformChanged?.Invoke(this, new SceneItemTransformEventArgs((string)body["sceneName"], (string)body["sceneItemId"], new SceneItemTransformInfo((JObject)body["sceneItemTransform"])));
+                    break;
+
+                case nameof(InputAudioSyncOffsetChanged):
+                    InputAudioSyncOffsetChanged?.Invoke(this, new InputAudioSyncOffsetChangedEventArgs((string)body["inputName"], (int)body["inputAudioSyncOffset"]));
+                    break;
+
+                case nameof(InputMuteStateChanged):
+                    InputMuteStateChanged?.Invoke(this, new InputMuteStateChangedEventArgs((string)body["inputName"], (bool)body["inputMuted"]));
+                    break;
+
+                case nameof(InputVolumeChanged):
+                    InputVolumeChanged?.Invoke(this, new InputVolumeChangedEventArgs(new InputVolume(body)));
+                    break;
+
+                case nameof(SourceFilterCreated):
+                    SourceFilterCreated?.Invoke(this, new SourceFilterCreatedEventArgs((string)body["sourceName"], (string)body["filterName"], (string)body["filterKind"], (int)body["filterIndex"], (JObject)body["filterSettings"], (JObject)body["defaultFilterSettings"]));
+                    break;
+
+                case nameof(SourceFilterRemoved):
+                    SourceFilterRemoved?.Invoke(this, new SourceFilterRemovedEventArgs((string)body["sourceName"], (string)body["filterName"]));
+                    break;
+
+                case nameof(SourceFilterListReindexed):
+                    if (SourceFilterListReindexed != null)
+                    {
+                        List<FilterReorderItem> filters = new List<FilterReorderItem>();
+                        JsonConvert.PopulateObject(body["filters"].ToString(), filters);
+
+                        SourceFilterListReindexed?.Invoke(this, new SourceFilterListReindexedEventArgs((string)body["sourceName"], filters));
+                    }
+                    break;
+
+                case nameof(SourceFilterEnableStateChanged):
+                    SourceFilterEnableStateChanged?.Invoke(this, new SourceFilterEnableStateChangedEventArgs((string)body["sourceName"], (string)body["filterName"], (bool)body["filterEnabled"]));
+                    break;
+
+                case nameof(VendorEvent):
+                    VendorEvent?.Invoke(this, new VendorEventArgs((string)body["vendorName"], (string)body["eventType"], body));
+                    break;
+
+                case nameof(MediaInputPlaybackEnded):
+                    MediaInputPlaybackEnded?.Invoke(this, new MediaInputPlaybackEndedEventArgs((string)body["inputName"]));
+                    break;
+
+                case nameof(MediaInputPlaybackStarted):
+                    MediaInputPlaybackStarted?.Invoke(this, new MediaInputPlaybackStartedEventArgs((string)body["sourceName"]));
+                    break;
+
+                case nameof(MediaInputActionTriggered):
+                    MediaInputActionTriggered?.Invoke(this, new MediaInputActionTriggeredEventArgs((string)body["inputName"], (string)body["mediaAction"]));
+                    break;
+
+                case nameof(VirtualcamStateChanged):
+                    VirtualcamStateChanged?.Invoke(this, new VirtualcamStateChangedEventArgs(new OutputStateChanged(body)));
+                    break;
+
+                case nameof(CurrentSceneCollectionChanging):
+                    CurrentSceneCollectionChanging?.Invoke(this, new CurrentSceneCollectionChangingEventArgs((string)body["sceneCollectionName"]));
+                    break;
+
+                case nameof(CurrentProfileChanging):
+                    CurrentProfileChanging?.Invoke(this, new CurrentProfileChangingEventArgs((string)body["profileName"]));
+                    break;
+
+                case nameof(SourceFilterNameChanged):
+                    SourceFilterNameChanged?.Invoke(this, new SourceFilterNameChangedEventArgs((string)body["sourceName"], (string)body["oldFilterName"], (string)body["filterName"]));
+                    break;
+
+                case nameof(InputCreated):
+                    InputCreated?.Invoke(this, new InputCreatedEventArgs((string)body["inputName"], (string)body["inputKind"], (string)body["unversionedInputKind"], (JObject)body["inputSettings"], (JObject)body["defaultInputSettings"]));
+                    break;
+
+                case nameof(InputRemoved):
+                    InputRemoved?.Invoke(this, new InputRemovedEventArgs((string)body["inputName"]));
+                    break;
+
+                case nameof(InputNameChanged):
+                    InputNameChanged?.Invoke(this, new InputNameChangedEventArgs((string)body["oldInputName"], (string)body["inputName"]));
+                    break;
+
+                case nameof(InputActiveStateChanged):
+                    InputActiveStateChanged?.Invoke(this, new InputActiveStateChangedEventArgs((string)body["inputName"], (bool)body["videoActive"]));
+                    break;
+
+                case nameof(InputShowStateChanged):
+                    InputShowStateChanged?.Invoke(this, new InputShowStateChangedEventArgs((string)body["inputName"], (bool)body["videoShowing"]));
+                    break;
+
+                case nameof(InputAudioBalanceChanged):
+                    InputAudioBalanceChanged?.Invoke(this, new InputAudioBalanceChangedEventArgs((string)body["inputName"], (double)body["inputAudioBalance"]));
+                    break;
+
+                case nameof(InputAudioTracksChanged):
+                    InputAudioTracksChanged?.Invoke(this, new InputAudioTracksChangedEventArgs((string)body["inputName"], (JObject)body["inputAudioTracks"]));
+                    break;
+
+                case nameof(InputAudioMonitorTypeChanged):
+                    InputAudioMonitorTypeChanged?.Invoke(this, new InputAudioMonitorTypeChangedEventArgs((string)body["inputName"], (string)body["monitorType"]));
+                    break;
+
+                case nameof(InputVolumeMeters):
+                    InputVolumeMeters?.Invoke(this, new InputVolumeMetersEventArgs(JsonConvert.DeserializeObject<List<JObject>>((string)body["inputs"])));
+                    break;
+
+                case nameof(ReplayBufferSaved):
+                    ReplayBufferSaved?.Invoke(this, new ReplayBufferSavedEventArgs((string)body["savedReplayPath"]));
+                    break;
+
+                case nameof(SceneCreated):
+                    SceneCreated?.Invoke(this, new SceneCreatedEventArgs((string)body["sceneName"], (bool)body["isGroup"]));
+                    break;
+
+                case nameof(SceneRemoved):
+                    SceneRemoved?.Invoke(this, new SceneRemovedEventArgs((string)body["sceneName"], (bool)body["isGroup"]));
+                    break;
+
+                case nameof(SceneNameChanged):
+                    SceneNameChanged?.Invoke(this, new SceneNameChangedEventArgs((string)body["oldSceneName"], (string)body["sceneName"]));
+                    break;
+
+                default:
+                    var message = $"Unsupported Event: {eventType}\n{body}";
+                    Console.WriteLine(message);
+                    Debug.WriteLine(message);
+                    break;
+            }
+        }
+
+        #endregion
+    }
 }
